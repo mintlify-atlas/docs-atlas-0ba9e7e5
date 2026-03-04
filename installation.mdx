@@ -1,0 +1,114 @@
+---
+title: "Installation"
+description: "Install know and get ready to search your local files semantically"
+---
+
+## Prerequisites
+
+Before installing know, ensure you have:
+
+- **Python 3.13 or higher** - Check your version with `python --version`
+- **uv** (recommended) - Fast Python package installer
+
+<Note>
+  uv is the recommended installer. Install it from [astral.sh/uv](https://astral.sh/uv)
+</Note>
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="Install with pipx (Recommended)">
+    The easiest way to install know globally:
+
+    ```bash
+    pipx install git+https://github.com/ynbh/know.git
+    ```
+
+    After installation, the `know` command will be available system-wide.
+
+    <Tip>
+      pipx isolates know in its own environment, preventing dependency conflicts with other Python tools.
+    </Tip>
+  </Tab>
+
+  <Tab title="Install from source with uv">
+    For development or to use the latest changes:
+
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/ynbh/know.git
+        cd know
+        ```
+      </Step>
+
+      <Step title="Install dependencies">
+        ```bash
+        uv sync
+        ```
+
+        For development with additional tools:
+        ```bash
+        uv sync --dev
+        ```
+      </Step>
+
+      <Step title="Run know">
+        Use `uv run` to execute know:
+        ```bash
+        uv run know --help
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+Confirm that know is installed correctly:
+
+```bash
+know --help
+```
+
+You should see the help message with available commands:
+
+```
+Usage: know [OPTIONS] COMMAND [ARGS]...
+
+know - semantic search CLI
+
+Commands:
+  add     Add a directory to the watch list.
+  remove  Remove a directory from the watch list.
+  index   Index all watched directories.
+  search  Search indexed documents.
+  dirs    List watched directories.
+  reset   Clear the entire index.
+  prune   Remove orphaned chunks from deleted files.
+```
+
+## What Gets Installed
+
+know installs with these key dependencies:
+
+- **ChromaDB** - Local vector database for storing embeddings
+- **LlamaIndex** - Document loading and chunking
+- **BM25s** - Lexical search support
+- **Typer** - CLI framework
+
+<Info>
+  All data is stored locally on your machine. know creates a `./know_index` directory in your current working directory and tracks watched directories in `~/.know_dirs`.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get started with know in under 2 minutes
+  </Card>
+  
+  <Card title="Supported Files" icon="file" href="/reference/supported-files">
+    See which file types know can index
+  </Card>
+</CardGroup>

@@ -1,0 +1,119 @@
+---
+title: 'know reset'
+description: 'Clear the entire index'
+---
+
+## Overview
+
+The `reset` command clears the entire search index, removing all indexed chunks and embeddings. This does not affect the watch list or source files.
+
+## Syntax
+
+```bash
+know reset
+```
+
+## Parameters
+
+This command takes no parameters or options.
+
+## Behavior
+
+- Deletes all indexed chunks from the database
+- Removes all vector embeddings
+- Does **not** modify the watch list (`~/.know_dirs`)
+- Does **not** delete or modify any source files
+
+<Warning>
+This operation is immediate and irreversible. The entire index will be cleared without confirmation.
+</Warning>
+
+## When to Use Reset
+
+Use `know reset` when:
+
+- You want to rebuild the index from scratch
+- The index is corrupted or producing incorrect results
+- You've made significant changes to indexing configuration
+- You want to clear all indexed data before removing know
+
+## Examples
+
+### Clear the index
+
+```bash
+know reset
+```
+
+```
+[Index cleared]
+```
+
+### Reset and rebuild
+
+```bash
+know reset
+know index
+```
+
+```
+[Index cleared]
+Indexing 3 directories
+OK Total: 234 new, 0 unchanged
+```
+
+## Comparison with Other Commands
+
+| Command | Effect |
+|---------|--------|
+| `know reset` | Clears entire index, keeps watch list |
+| `know index --force` | Clears index AND immediately re-indexes |
+| `know prune` | Removes only orphaned chunks from deleted files |
+| `know remove <dir>` | Removes directory from watch list, keeps indexed data |
+
+<Tip>
+Instead of `know reset` followed by `know index`, you can use `know index --force` to do both in one step.
+</Tip>
+
+## After Reset
+
+After running `reset`, you'll need to re-index to use search:
+
+```bash
+know reset
+know index
+```
+
+Attempting to search before re-indexing will show:
+
+```bash
+know "my query"
+```
+
+```
+No index found.
+To get started, run:
+  know add <dir>
+  know index
+```
+
+## Complete Cleanup
+
+To completely remove all know data:
+
+```bash
+# Clear the index
+know reset
+
+# Remove watch list
+rm ~/.know_dirs
+
+# Remove database (if applicable)
+rm -rf ~/.know_db  # or wherever your database is stored
+```
+
+## See Also
+
+- `know index --force` - Clear and re-index in one command
+- `know prune` - Remove only orphaned chunks
+- `know remove` - Remove directories from watch list

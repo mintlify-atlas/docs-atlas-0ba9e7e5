@@ -1,80 +1,235 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get started with know in under 2 minutes"
 ---
 
-## Get started in three steps
+know is a semantic search CLI that lets you query your local documents using natural language. This guide will get you indexing and searching in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Quick Start
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Add a directory to watch">
+    Tell know which directory to index:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    know add ~/Documents/notes
+    ```
 
-### Step 2: Deploy your changes
+    You can add multiple directories:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash
+    know add ~/Projects/docs
+    know add ~/Downloads/papers
+    ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Tip>
+      Use `know dirs` to see all watched directories at any time.
+    </Tip>
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Index your files">
+    Build the search index from your watched directories:
 
-### Step 3: Go live
+    ```bash
+    know index
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    This will:
+    - Scan all watched directories for supported file types
+    - Chunk documents into searchable segments
+    - Generate and store embeddings locally in `./know_index`
 
-## Next steps
+    <Info>
+      Indexing creates a `know_index` directory in your current working directory. Subsequent index runs only process new or changed files.
+    </Info>
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Search your documents">
+    Query your indexed files using natural language:
 
-<CardGroup cols={2}>
+    ```bash
+    know "retrieval augmented generation"
+    ```
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    know returns ranked results with context:
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    ```
+    Results for: retrieval augmented generation
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    #  File                          Score    Path
+    1  rag-notes.md                 0.234    ~/Documents/notes/ai/rag-notes.md
+    2  llm-architectures.md         0.456    ~/Documents/notes/ai/llm-architectures.md
+    3  semantic-search.txt          0.512    ~/Documents/research/semantic-search.txt
+    ```
+  </Step>
+</Steps>
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+## Common Workflows
 
-</CardGroup>
+### Search with filters
+
+Limit results to specific file types or recently modified files:
+
+<CodeGroup>
+```bash Only Markdown files
+know "API documentation" --glob "**/*.md"
+```
+
+```bash Files modified in last 7 days
+know "meeting notes" --since 7d
+```
+
+```bash Combine filters
+know "bug report" --glob "**/*.md" --since 2024-01-15 --limit 10
+```
+</CodeGroup>
+
+### Incremental indexing
+
+Index only files modified in the last week:
+
+```bash
+know index --since 7d
+```
+
+This is useful for large document collections where you want to quickly update the index.
+
+### Try different search modes
+
+know supports multiple search strategies:
+
+<Tabs>
+  <Tab title="Dense (Default)">
+    Semantic vector search using embeddings:
+
+    ```bash
+    know "machine learning concepts"
+    ```
+
+    Best for: Conceptual queries, finding similar topics
+  </Tab>
+
+  <Tab title="BM25 Lexical">
+    Traditional keyword-based search:
+
+    ```bash
+    know "def calculate_metrics" --bm25
+    ```
+
+    Best for: Exact terms, function names, specific phrases
+  </Tab>
+
+  <Tab title="Hybrid">
+    Combines both approaches using reciprocal rank fusion:
+
+    ```bash
+    know "error handling patterns" --hybrid
+    ```
+
+    Best for: Maximum recall, diverse result sets
+  </Tab>
+</Tabs>
+
+### Preview changes without indexing
+
+Use dry run mode to see what would be indexed:
+
+```bash
+know index --dry
+```
+
+This shows you:
+- How many new documents would be added
+- How many unchanged documents would be skipped
+- No actual changes to the index
+
+## Understanding Results
+
+### Distance scores
+
+For dense (vector) search, lower scores indicate better matches:
+- **0.0 - 0.3**: Highly relevant
+- **0.3 - 0.5**: Moderately relevant  
+- **0.5+**: Less relevant
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Scores are cosine distances. A score of 0 means identical vectors, while higher values indicate greater dissimilarity.
 </Note>
+
+### Result limit
+
+By default, know returns 5 results. Adjust with `--limit`:
+
+```bash
+know "python testing" --limit 10
+```
+
+## Managing Your Index
+
+### View watched directories
+
+See all directories currently being tracked:
+
+```bash
+know dirs
+```
+
+### Remove old files from index
+
+Clean up chunks from deleted files:
+
+```bash
+know prune
+```
+
+<Warning>
+  Running `prune` permanently removes chunks for files that no longer exist on disk.
+</Warning>
+
+### Start fresh
+
+Clear the entire index and start over:
+
+```bash
+know reset
+```
+
+Then re-index:
+
+```bash
+know index
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands Reference" icon="terminal" href="/commands/search">
+    Explore all available commands and options
+  </Card>
+  
+  <Card title="Search Modes" icon="magnifying-glass" href="/guides/search-modes">
+    Learn about dense, BM25, and hybrid search
+  </Card>
+  
+  <Card title="Filtering Results" icon="filter" href="/guides/filtering">
+    Master glob patterns and time-based filters
+  </Card>
+  
+  <Card title="Output Formats" icon="file-export" href="/guides/output-formats">
+    Export results as JSON or plain text
+  </Card>
+</CardGroup>
+
+## Tips for Better Results
+
+<Tip>
+  **Use natural language queries** - know understands semantic meaning, so "how to handle errors in async functions" works better than just "error handling"
+</Tip>
+
+<Tip>
+  **Combine search modes** - Try `--benchmark` to compare dense vs BM25 results side-by-side and see which works better for your query
+</Tip>
+
+<Tip>
+  **Organize by directory** - Keep related documents in the same directory, then use `--glob` patterns to search within specific areas
+</Tip>

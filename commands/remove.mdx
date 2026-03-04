@@ -1,0 +1,70 @@
+---
+title: 'know remove'
+description: 'Remove a directory from the watch list'
+---
+
+## Overview
+
+The `remove` command removes a directory from know's watch list. This stops the directory from being included in future indexing operations.
+
+## Syntax
+
+```bash
+know remove <directory>
+```
+
+## Parameters
+
+<ParamField path="directory" type="Path" required>
+  The path to the directory you want to remove from the watch list. Can be absolute or relative.
+</ParamField>
+
+## Behavior
+
+- Resolves the directory path to its absolute form
+- Removes the directory from `~/.know_dirs` if present
+- Shows a warning if the directory is not in the watch list
+- Does not validate that the directory exists (useful for removing deleted directories)
+
+<Warning>
+Removing a directory from the watch list does not automatically remove its indexed content. Use `know prune` to clean up orphaned chunks from deleted files, or `know index --force` to rebuild the entire index.
+</Warning>
+
+## Examples
+
+### Remove a directory
+
+```bash
+know remove ~/old-project
+```
+
+```
+Removed /home/user/old-project
+```
+
+### Remove directory not in watch list
+
+```bash
+know remove /path/not/tracked
+```
+
+```
+Not in watchlist: /path/not/tracked
+```
+
+### Remove current directory
+
+```bash
+know remove .
+```
+
+```
+Removed /home/user/current/directory
+```
+
+## See Also
+
+- `know add` - Add directories to watch list
+- `know dirs` - View all watched directories
+- `know prune` - Remove orphaned chunks from deleted files
+- `know reset` - Clear the entire index

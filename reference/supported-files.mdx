@@ -1,0 +1,117 @@
+---
+title: 'Supported File Types'
+description: 'Complete list of file extensions supported by know for indexing and search'
+icon: 'file-lines'
+---
+
+## Overview
+
+know can index and search a wide range of document and code file types. The tool uses llama-index's `SimpleDirectoryReader` to load files based on their extensions.
+
+## Supported Extensions
+
+### Document Files
+
+know supports common document formats for knowledge management and documentation:
+
+- `.md` - Markdown files
+- `.txt` - Plain text files
+- `.pdf` - PDF documents
+- `.docx` - Microsoft Word documents
+- `.pptx` - Microsoft PowerPoint presentations
+- `.html` - HTML files
+
+### Code Files
+
+know indexes source code files across multiple programming languages:
+
+- `.py` - Python
+- `.js` - JavaScript
+- `.ts` - TypeScript
+- `.jsx` - JavaScript React
+- `.tsx` - TypeScript React
+- `.go` - Go
+- `.rs` - Rust
+- `.java` - Java
+- `.c` - C
+- `.cpp` - C++
+- `.h` - C/C++ header files
+- `.hpp` - C++ header files
+- `.rb` - Ruby
+- `.sh` - Shell scripts
+- `.lua` - Lua
+- `.swift` - Swift
+
+## Custom Extensions
+
+You can index files with custom extensions using the `--ext` flag:
+
+```bash
+know index --ext .custom --ext .special
+```
+
+Multiple extensions can be specified by repeating the flag or using comma-separated values:
+
+```bash
+know index --ext .go,.rs,.zig
+```
+
+## Filtering by Extension
+
+When indexing, you can limit which file types to process:
+
+```bash
+# Index only Python files
+know index --ext .py
+
+# Index only markdown and text files
+know index --ext .md --ext .txt
+```
+
+## File Selection
+
+### Default Behavior
+
+By default, `know index` processes all supported file types in watched directories.
+
+### Using Glob Patterns
+
+For more precise control, use glob patterns to include specific files:
+
+```bash
+# Index only files in docs directory
+know index --glob "docs/**"
+
+# Index only markdown files in notes
+know index --glob "notes/**/*.md"
+
+# Multiple patterns
+know index --glob "**/*.py" --glob "**/*.md"
+```
+
+## Technical Details
+
+### File Loading
+
+Files are loaded using llama-index's `SimpleDirectoryReader` with the following configuration:
+
+- **Recursive scanning**: Enabled by default (disable with `--no-recursive`)
+- **Filename as ID**: File paths are used as document identifiers
+- **Extension filtering**: Only files matching `required_exts` are processed
+
+### File Cache
+
+know tracks file modification times and sizes to avoid re-indexing unchanged files:
+
+- **Cache location**: `./know_index/file_cache.json`
+- **Cache invalidation**: Files are re-indexed if `mtime` or size changes
+- **Chunk configuration**: Cache is tied to chunk size and overlap settings
+
+<Note>
+Changing `--chunk-size` or `--overlap` settings will invalidate the file cache and require re-indexing all files.
+</Note>
+
+## Related Commands
+
+- [know index](/commands/index) - Index files from watched directories
+- [know search](/commands/search) - Search indexed documents with glob filters

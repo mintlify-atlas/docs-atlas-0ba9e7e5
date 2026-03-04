@@ -1,0 +1,619 @@
+---
+title: 'FAQ'
+description: 'Frequently asked questions and troubleshooting guide for know'
+icon: 'circle-question'
+---
+
+## General Questions
+
+<AccordionGroup>
+  <Accordion title="What is know and how does it work?">
+    know is a semantic search CLI tool that indexes your local documents and code files, allowing you to search them using natural language queries. It combines:
+    
+    - **Vector embeddings** (via ChromaDB) for semantic similarity search
+    - **BM25 lexical search** for exact term matching
+    - **Hybrid search** using Reciprocal Rank Fusion (RRF) for best results
+    
+    Documents are split into chunks, embedded, and stored locally. When you search, know retrieves the most relevant chunks and displays them with context.
+  </Accordion>
+
+  <Accordion title="Is my data sent to any external servers?">
+    No. know runs entirely locally on your machine:
+    
+    - All indexing happens locally using ChromaDB's default embedding model (all-MiniLM-L6-v2)
+    - No data is sent to external APIs or cloud services
+    - Your documents and search queries remain private
+    - All indexes are stored in `./know_index` in your working directory
+    
+    This makes know safe to use with sensitive codebases and private documents.
+  </Accordion>
+
+  <Accordion title="How much disk space does the index require?">
+    Index size depends on the amount of content you're indexing:
+    
+    - **Vector embeddings**: ~1.5-2 KB per chunk (512 tokens)
+    - **BM25 cache**: ~10-20% of your document corpus size
+    - **File cache**: ~100 bytes per indexed file
+    - **ChromaDB overhead**: 1-5% of total index size
+    
+    **Example**: Indexing 10,000 documents (~50 MB of text) typically results in:
+    - 20,000-30,000 chunks
+    - 30-60 MB for vector embeddings
+    - 5-10 MB for BM25 cache
+    - Total: ~35-70 MB
+    
+    Use `du -sh ./know_index` to check your index size.
+  </Accordion>
+
+  <Accordion title="Can I use know with multiple projects?">
+    Yes, but each project needs its own index. The index location is `./know_index` relative to your current working directory.
+    
+    **Option 1**: Run know from different project directories
+    ```bash
+    cd ~/project-a
+    know add .
+    know index
+    know search "query"
+    
+    cd ~/project-b
+    know add .
+    know index
+    know search "query"
+    ```
+    
+    **Option 2**: Use a global index for all projects
+    ```bash
+    mkdir ~/knowledge-base
+    cd ~/knowledge-base
+    know add ~/project-a
+    know add ~/project-b
+    know add ~/documents
+    know index
+    ```
+    
+    Each approach maintains separate indexes and watched directory lists.
+  </Accordion>
+</AccordionGroup>
+
+## Indexing Questions
+
+<AccordionGroup>
+  <Accordion title="How do I update the index after changing files?">
+    Simply run `know index` again. know automatically detects changes:
+    
+    ```bash
+    know index
+    ```
+    
+    **Incremental indexing**:
+    - Only new and modified files are processed
+    - Unchanged files are skipped based on modification time and size
+    - Existing chunks remain in the index
+    
+    **Force re-index everything**:
+    ```bash
+    know index --force
+    ```
+    
+    This clears the entire index and re-processes all files.
+  </Accordion>
+
+  <Accordion title="What happens to deleted files in the index?">
+    Deleted files remain in the index as "orphaned chunks" until you prune them:
+    
+    ```bash
+    # Check what would be removed
+    know prune --dry
+    
+    # Remove orphaned chunks
+    know prune
+    ```
+    
+    The `prune` command:
+    - Scans all indexed chunks
+    - Checks if source files still exist
+    - Removes chunks from deleted files
+    - Cleans up the file cache
+    
+    **Tip**: Run `know prune` periodically to keep your index clean and save disk space.
+  </Accordion>
+
+  <Accordion title="How do I index only specific file types?">
+    Use the `--ext` flag to filter by file extension:
+    
+    ```bash
+    # Index only Python files
+    know index --ext .py
+    
+    # Index markdown and text files
+    know index --ext .md --ext .txt
+    
+    # Comma-separated extensions
+    know index --ext .go,.rs,.zig
+    ```
+    
+    For more precise control, use glob patterns:
+    
+    ```bash
+    # Index only files in docs/ directory
+    know index --glob "docs/**"
+    
+    # Index Python files in src/ only
+    know index --glob "src/**/*.py"
+    ```
+    
+    See [Supported File Types](/reference/supported-files) for the full list of default extensions.
+  </Accordion>
+
+  <Accordion title="Can I index recently modified files only?">
+    Yes, use the `--since` flag to index files modified after a certain time:
+    
+    ```bash
+    # Files modified in the last 7 days
+    know index --since 7d
+    
+    # Last 12 hours
+    know index --since 12h
+    
+    # Last 30 minutes
+    know index --since 30m
+    
+    # Since specific date
+    know index --since 2024-01-15
+    ```
+    
+    This is useful for:
+    - Quick updates after a work session
+    - Indexing new files without re-processing everything
+    - Testing on recent changes
+    
+    **Note**: The file cache still applies, so unchanged files are skipped even if they match the time filter.
+  </Accordion>
+
+  <Accordion title="What are chunk size and overlap, and should I change them?">
+    **Chunk size** determines how much text goes into each searchable unit:
+    - Default: 512 tokens (~350-400 words)
+    - Larger chunks: More context, but less precise results
+    - Smaller chunks: More precise, but may lose context
+    
+    **Chunk overlap** creates redundancy between adjacent chunks:
+    - Default: 50 tokens
+    - Prevents information from being split across chunk boundaries
+    - Improves retrieval of content near chunk edges
+    
+    **Custom configuration**:
+    ```bash
+    know index --chunk-size 1024 --overlap 100
+    ```
+    
+    **When to change**:
+    - **Large chunk size (1024)**: For long-form documents where context is important
+    - **Small chunk size (256)**: For code search where precision matters
+    - **No overlap (0)**: To reduce index size (not recommended)
+    
+    <Warning>
+      Changing chunk settings invalidates the file cache and requires re-indexing all files.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Why are some files being skipped during indexing?">
+    Files can be skipped for several reasons:
+    
+    1. **Unchanged files**: Already indexed and not modified (most common)
+    2. **Already indexed chunks**: Same content already exists in the index
+    3. **Duplicate content**: Identical chunks within the current batch
+    4. **Extension filter**: File type not in allowed extensions
+    5. **Glob filter**: File doesn't match `--glob` patterns
+    6. **Time filter**: File not modified since `--since` timestamp
+    
+    To see detailed skip reasons:
+    ```bash
+    know index --report skip_report.json
+    ```
+    
+    This generates a JSON report with:
+    - Number of chunks added vs. skipped
+    - Specific reason for each skipped chunk
+    - Path collisions for duplicate content
+  </Accordion>
+</AccordionGroup>
+
+## Search Questions
+
+<AccordionGroup>
+  <Accordion title="When should I use dense, BM25, or hybrid search?">
+    Each search mode has different strengths:
+    
+    **Dense (default)** - Semantic similarity
+    ```bash
+    know search "how to handle errors"
+    ```
+    - Best for: Conceptual queries, natural language questions
+    - Finds semantically similar content even with different wording
+    - Use when: Looking for concepts, explanations, or related topics
+    
+    **BM25** - Lexical/keyword matching
+    ```bash
+    know search "DatabaseError exception" --bm25
+    ```
+    - Best for: Exact terms, function names, error messages
+    - Ranks by term frequency and rarity
+    - Use when: Searching for specific identifiers or technical terms
+    
+    **Hybrid** - Combined approach
+    ```bash
+    know search "authentication middleware" --hybrid
+    ```
+    - Best for: General purpose, balanced results
+    - Combines semantic understanding with keyword matching
+    - Use when: Unsure which mode to use, or want comprehensive results
+    
+    **Benchmark mode**: Compare dense vs. BM25 side-by-side
+    ```bash
+    know search "query" --benchmark
+    ```
+  </Accordion>
+
+  <Accordion title="How do I search within specific files or directories?">
+    Use glob patterns with the `--glob` flag:
+    
+    ```bash
+    # Search only markdown files
+    know search "query" --glob "**/*.md"
+    
+    # Search in specific directory
+    know search "query" --glob "docs/**"
+    
+    # Multiple patterns
+    know search "query" --glob "src/**/*.py" --glob "tests/**/*.py"
+    
+    # Search by filename
+    know search "query" --glob "**/config.yaml"
+    ```
+    
+    Combine with time filters:
+    ```bash
+    # Recent changes in Python files
+    know search "query" --glob "**/*.py" --since 7d
+    ```
+  </Accordion>
+
+  <Accordion title="Why am I getting too many or irrelevant results?">
+    Try these strategies to improve result quality:
+    
+    **1. Reduce the number of results**
+    ```bash
+    know search "query" --limit 3
+    ```
+    
+    **2. Use more specific queries**
+    ```
+    ❌ "database"
+    ✓ "PostgreSQL connection pooling"
+    ```
+    
+    **3. Try different search modes**
+    ```bash
+    # If dense search is too broad, try BM25
+    know search "specific_function_name" --bm25
+    
+    # If BM25 is too narrow, try hybrid
+    know search "query" --hybrid
+    ```
+    
+    **4. Filter by file type or location**
+    ```bash
+    know search "query" --glob "docs/**/*.md"
+    ```
+    
+    **5. Use benchmark mode to compare**
+    ```bash
+    know search "query" --benchmark
+    ```
+    
+    This shows results from both dense and BM25, helping you choose the best mode.
+  </Accordion>
+
+  <Accordion title="Can I export search results to use in other tools?">
+    Yes, know supports JSON output:
+    
+    **Output to file**:
+    ```bash
+    know search "query" --json-out results.json
+    ```
+    
+    **Output to stdout**:
+    ```bash
+    know search "query" --json
+    ```
+    
+    **Plain text output**:
+    ```bash
+    know search "query" --plain
+    ```
+    
+    **Pipe to other tools**:
+    ```bash
+    know search "query" --json | jq '.items[].meta.path' | sort | uniq
+    ```
+    
+    JSON structure:
+    ```json
+    {
+      "query": "search query",
+      "mode": "dense",
+      "items": [
+        {
+          "doc": "filename\n\ncontent",
+          "meta": {
+            "path": "/full/path/to/file",
+            "filename": "file.py",
+            "extension": ".py",
+            "chunk_index": 0
+          },
+          "distance": 0.123
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="How do I search without typing 'search' every time?">
+    know automatically treats unknown commands as search queries:
+    
+    ```bash
+    # These are equivalent:
+    know search "error handling"
+    know "error handling"
+    
+    # With flags:
+    know "authentication" --limit 3 --hybrid
+    ```
+    
+    This shortcut works unless the first word is a known command:
+    - `add`, `remove`, `index`, `search`, `prune`, `dirs`, `reset`, `--help`
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Error: 'No index found'">
+    This means you haven't indexed any documents yet.
+    
+    **Solution**:
+    ```bash
+    # Add a directory to watch
+    know add /path/to/documents
+    
+    # Index the directory
+    know index
+    ```
+    
+    **Check watched directories**:
+    ```bash
+    know dirs
+    ```
+    
+    If no directories are listed, add them with `know add`.
+  </Accordion>
+
+  <Accordion title="Error: 'No documents found'">
+    This occurs when:
+    1. No files match the extension filter
+    2. No files match glob patterns
+    3. No files modified since `--since` timestamp
+    4. Directory is empty
+    
+    **Diagnosis**:
+    ```bash
+    # Check what extensions are being indexed
+    know index --log
+    
+    # Try without filters
+    know index  # No --ext or --glob flags
+    
+    # Check if files exist in the directory
+    ls -la /path/to/watched/directory
+    ```
+    
+    **Solution**: Adjust your filters or ensure the directory contains supported file types.
+  </Accordion>
+
+  <Accordion title="Index is growing too large">
+    Large indexes can be caused by:
+    1. Indexing binary files or large PDFs
+    2. Not pruning deleted files
+    3. Duplicate content from multiple sources
+    
+    **Solutions**:
+    
+    **1. Remove orphaned chunks**:
+    ```bash
+    know prune
+    ```
+    
+    **2. Start fresh with specific file types**:
+    ```bash
+    know reset
+    know index --ext .md --ext .py --ext .txt
+    ```
+    
+    **3. Use glob patterns to exclude large files**:
+    ```bash
+    know index --glob "**/*.md" --glob "**/*.py"
+    ```
+    
+    **4. Check index size**:
+    ```bash
+    du -sh ./know_index
+    ```
+  </Accordion>
+
+  <Accordion title="Search is slow or BM25 index keeps rebuilding">
+    **Symptoms**:
+    - First search after indexing takes a long time
+    - BM25 search always shows "building index"
+    - `./know_index/bm25/` directory is empty or missing
+    
+    **Causes**:
+    1. BM25 cache was deleted or corrupted
+    2. Index is being modified between searches
+    3. Very large index (>100k chunks)
+    
+    **Solutions**:
+    
+    **1. Let BM25 cache build once**:
+    ```bash
+    # First BM25 search will be slow but builds cache
+    know search "test" --bm25
+    
+    # Subsequent searches will be fast
+    know search "actual query" --bm25
+    ```
+    
+    **2. Verify cache exists**:
+    ```bash
+    ls -la ./know_index/bm25/
+    ```
+    
+    Should contain: `meta.json`, `ids.json`, and BM25 index files.
+    
+    **3. Avoid frequent re-indexing**:
+    Index once, then use incremental updates:
+    ```bash
+    know index --since 1h  # Only recent changes
+    ```
+  </Accordion>
+
+  <Accordion title="How do I completely reset and start over?">
+    **Option 1**: Clear the index only
+    ```bash
+    know reset
+    ```
+    This removes all indexed chunks but keeps your watched directories.
+    
+    **Option 2**: Clear everything
+    ```bash
+    # Remove index and cache
+    rm -rf ./know_index
+    
+    # Remove watched directories list
+    rm ~/.know_dirs
+    
+    # Start fresh
+    know add /path/to/directory
+    know index
+    ```
+    
+    **Option 3**: Start a new project
+    ```bash
+    # Use a different working directory
+    cd /path/to/new/project
+    know add .
+    know index
+    ```
+    
+    Each directory has its own `./know_index` and `~/.know_dirs` list.
+  </Accordion>
+
+  <Accordion title="Getting import or dependency errors">
+    Ensure all dependencies are installed:
+    
+    ```bash
+    pip install chromadb llama-index-core bm25s PyStemmer typer rich
+    ```
+    
+    **Common issues**:
+    
+    **1. ChromaDB version conflicts**:
+    ```bash
+    pip install --upgrade chromadb
+    ```
+    
+    **2. Missing PyStemmer**:
+    ```bash
+    pip install PyStemmer
+    ```
+    
+    **3. llama-index namespace issues**:
+    ```bash
+    pip install llama-index-core
+    # Not: pip install llama-index
+    ```
+    
+    **Check installed versions**:
+    ```bash
+    pip list | grep -E "chromadb|llama-index|bm25s|typer"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="How can I make indexing faster?">
+    **1. Use incremental indexing**:
+    ```bash
+    know index --since 7d
+    ```
+    
+    **2. Filter by file type**:
+    ```bash
+    know index --ext .md --ext .py
+    ```
+    
+    **3. Exclude unnecessary directories**:
+    Don't add `node_modules`, `.git`, or `venv` to watched directories.
+    
+    **4. Adjust chunk size**:
+    Larger chunks = fewer chunks to process
+    ```bash
+    know index --chunk-size 1024
+    ```
+    
+    **5. Use dry run to test**:
+    ```bash
+    know index --dry
+    ```
+    
+    **6. Monitor progress**:
+    ```bash
+    know index --log
+    ```
+  </Accordion>
+
+  <Accordion title="How can I make search faster?">
+    **1. Reduce candidate limit**:
+    ```bash
+    know search "query" --limit 5
+    ```
+    
+    **2. Use dense search (fastest)**:
+    ```bash
+    know search "query"  # Default, no extra flags
+    ```
+    
+    Dense search is faster than BM25 or hybrid because it uses ChromaDB's optimized vector search.
+    
+    **3. Filter early with globs**:
+    ```bash
+    know search "query" --glob "docs/**"
+    ```
+    
+    **4. Keep BM25 cache warm**:
+    The first BM25/hybrid search after indexing is slow (builds cache). Subsequent searches are fast.
+    
+    **5. Prune regularly**:
+    ```bash
+    know prune
+    ```
+    Smaller indexes = faster searches.
+  </Accordion>
+</AccordionGroup>
+
+## Related Documentation
+
+- [Commands Reference](/commands/search) - Complete command documentation
+- [Architecture](/reference/architecture) - System design and data flow
+- [Supported File Types](/reference/supported-files) - Indexable file extensions

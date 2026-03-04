@@ -1,0 +1,126 @@
+---
+title: 'know prune'
+description: 'Remove orphaned chunks from deleted files'
+---
+
+## Overview
+
+The `prune` command removes indexed chunks that belong to files that no longer exist. This helps keep the database clean and prevents search results from referencing deleted files.
+
+## Syntax
+
+```bash
+know prune [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--dry" type="boolean" default="false">
+  Show what would be pruned without actually deleting anything. Useful for previewing the cleanup operation.
+</ParamField>
+
+<ParamField path="--log" type="boolean" default="false">
+  Show detailed output during the pruning process.
+  
+  **Alias:** `-l`
+</ParamField>
+
+## When to Use Prune
+
+Run `know prune` when:
+
+- You've deleted or moved files outside of know
+- You've removed directories from the watch list with `know remove`
+- You want to clean up the database after major file reorganization
+- Search results are showing paths to files that no longer exist
+
+## Examples
+
+### Prune orphaned chunks
+
+```bash
+know prune
+```
+
+```
+Pruned 47 chunks from deleted files
+```
+
+### Dry run to preview pruning
+
+```bash
+know prune --dry
+```
+
+```
+Would prune 23 chunks from deleted files:
+  - /old/path/file1.md (5 chunks)
+  - /deleted/document.txt (3 chunks)
+  - /moved/notes.md (15 chunks)
+```
+
+### Prune with detailed logs
+
+```bash
+know prune --log
+```
+
+```
+Checking indexed chunks...
+Found orphaned chunks:
+  /old/project/readme.md (8 chunks)
+  /deleted/notes.txt (12 chunks)
+Deleted 20 chunks
+Pruned 20 chunks from deleted files
+```
+
+### Dry run with logs
+
+```bash
+know prune --dry --log
+```
+
+```
+Checking indexed chunks...
+Found orphaned chunks:
+  /old/project/readme.md (8 chunks)
+  /deleted/notes.txt (12 chunks)
+Would prune 20 chunks from deleted files
+```
+
+<Tip>
+Run `know prune --dry --log` first to see exactly what will be removed before actually pruning.
+</Tip>
+
+<Note>
+Pruning only removes chunks from files that no longer exist on disk. It does not remove chunks from files that still exist but were removed from the watch list.
+</Note>
+
+## Workflow Example
+
+```bash
+# Remove a directory from watch list
+know remove ~/old-project
+
+# Preview what would be pruned
+know prune --dry --log
+
+# Clean up orphaned chunks
+know prune
+```
+
+## Alternative Approach
+
+If you want to completely rebuild the index instead of pruning:
+
+```bash
+know index --force
+```
+
+This clears the entire index and re-indexes all watched directories from scratch.
+
+## See Also
+
+- `know index --force` - Rebuild the entire index
+- `know reset` - Clear the entire index
+- `know remove` - Remove directories from watch list

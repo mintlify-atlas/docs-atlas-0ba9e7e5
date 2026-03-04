@@ -1,0 +1,215 @@
+---
+title: 'know index'
+description: 'Index all watched directories for semantic search'
+---
+
+## Overview
+
+The `index` command processes all directories in the watch list, extracting text content, chunking it, and creating vector embeddings for semantic search.
+
+## Syntax
+
+```bash
+know index [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--log" type="boolean" default="false">
+  Show detailed logs during indexing, including file processing information and statistics.
+  
+  **Alias:** `-l`
+</ParamField>
+
+<ParamField path="--ext" type="list[string]" default="[supported extensions]">
+  Comma-separated list of file extensions to index. By default, indexes all supported file types.
+  
+  **Alias:** `-e`
+  
+  **Example:** `--ext .md,.txt` or `--ext md,txt`
+</ParamField>
+
+<ParamField path="--glob" type="list[string]">
+  Include only files matching glob patterns. Can be specified multiple times or as comma-separated values.
+  
+  **Alias:** `-g`
+  
+  **Example:** `--glob "**/*.md" --glob "notes/**"`
+</ParamField>
+
+<ParamField path="--since" type="string">
+  Only index files modified since the specified time. Accepts relative time (e.g., `7d`, `12h`, `30m`) or absolute dates (e.g., `2024-01-15`).
+  
+  **Examples:**
+  - `7d` - Last 7 days
+  - `12h` - Last 12 hours
+  - `30m` - Last 30 minutes
+  - `2w` - Last 2 weeks
+  - `2024-01-15` - Since January 15, 2024
+  - `2024-01-15T10:30:00` - Specific timestamp
+</ParamField>
+
+<ParamField path="--recursive" type="boolean" default="true">
+  Scan subdirectories recursively. Use `--no-recursive` to scan only top-level files.
+  
+  **Alias:** `-r` (enable), `-R` (disable)
+</ParamField>
+
+<ParamField path="--chunk-size" type="integer" default="512">
+  Size of each text chunk in tokens. Larger chunks provide more context but may reduce precision.
+  
+  **Alias:** `-c`
+</ParamField>
+
+<ParamField path="--overlap" type="integer" default="50">
+  Number of overlapping tokens between consecutive chunks. Helps maintain context across chunk boundaries.
+  
+  **Alias:** `-o`
+</ParamField>
+
+<ParamField path="--force" type="boolean" default="false">
+  Clear the entire index and re-index everything from scratch.
+  
+  **Alias:** `-f`
+</ParamField>
+
+<ParamField path="--dry" type="boolean" default="false">
+  Simulate indexing without writing to the database. Useful for previewing what will be indexed.
+</ParamField>
+
+<ParamField path="--report" type="Path">
+  Write a JSON report of skipped files to the specified path.
+</ParamField>
+
+## Examples
+
+### Basic indexing
+
+```bash
+know index
+```
+
+```
+Indexing 2 directories
+OK Total: 143 new, 89 unchanged
+```
+
+### Index with detailed logs
+
+```bash
+know index --log
+```
+
+```
+Indexing 1 directories
+Extensions: ['.md', '.txt', '.py', ...]
+Chunk size: 512, overlap: 50
+──────────────────────── /home/user/docs ────────────────────────
+✓ Processing notes.md (3 chunks)
+✓ Processing readme.txt (1 chunk)
+...
+OK Total: 45 new, 12 unchanged
+```
+
+### Index only markdown files
+
+```bash
+know index --ext .md
+```
+
+### Index files modified in last 7 days
+
+```bash
+know index --since 7d
+```
+
+```
+Indexing 2 directories
+OK Total: 23 new, 0 unchanged
+```
+
+### Index with glob patterns
+
+```bash
+know index --glob "**/*.md" --glob "docs/**"
+```
+
+### Force re-index everything
+
+```bash
+know index --force
+```
+
+```
+Indexing 2 directories
+OK Total: 245 new, 0 unchanged
+```
+
+### Dry run to preview indexing
+
+```bash
+know index --dry --log
+```
+
+```
+Dry run: Scanning 2 directories
+Extensions: ['.md', '.txt', '.py', ...]
+...
+Dry run: Would index 34 new, 102 unchanged
+```
+
+### Custom chunk settings
+
+```bash
+know index --chunk-size 1024 --overlap 100
+```
+
+### Generate skip report
+
+```bash
+know index --report skip-report.json
+```
+
+```
+Indexing 2 directories
+OK Total: 56 new, 189 unchanged
+Report written to skip-report.json
+```
+
+<Note>
+The index command only processes files that have been modified since the last index. Use `--force` to rebuild the entire index from scratch.
+</Note>
+
+<Tip>
+Use `--dry` with `--log` to see exactly what files will be indexed before making any changes.
+</Tip>
+
+<Warning>
+Using `--force` clears the entire index. Make sure this is what you want before running it.
+</Warning>
+
+## Time Format Reference
+
+The `--since` flag accepts flexible time formats:
+
+| Format | Description | Example |
+|--------|-------------|----------|
+| `<N>m` | Minutes ago | `30m` |
+| `<N>h` | Hours ago | `12h` |
+| `<N>d` | Days ago | `7d` |
+| `<N>w` | Weeks ago | `2w` |
+| `YYYY-MM-DD` | Absolute date | `2024-01-15` |
+| ISO 8601 | Full timestamp | `2024-01-15T10:30:00` |
+
+## Prerequisites
+
+Before running `know index`, you must:
+
+1. Add at least one directory: `know add <directory>`
+2. Verify directories are added: `know dirs`
+
+## See Also
+
+- `know add` - Add directories to watch list
+- `know prune` - Remove orphaned chunks
+- `know search` - Search indexed content

@@ -1,0 +1,494 @@
+---
+title: Configuration
+description: Configure chunk size, overlap, and other indexing settings
+---
+
+know provides several configuration options to optimize indexing for your content. Understanding these settings helps you balance search quality, performance, and storage.
+
+## Chunk Size and Overlap
+
+Documents are split into chunks for indexing. The chunk size and overlap determine how content is divided.
+
+### Chunk Size
+
+The `--chunk-size` parameter controls the maximum size of each chunk in tokens (roughly equivalent to words).
+
+```bash
+# Default: 512 tokens (~400 words)
+know index
+
+# Smaller chunks for more precise results
+know index --chunk-size 256
+
+# Larger chunks for more context
+know index --chunk-size 1024
+```
+
+<Tabs>
+  <Tab title="Small (256)">
+    **Use for:**
+    - Short documents (notes, snippets)
+    - Precise location matching
+    - Code files with small functions
+    - FAQ-style content
+    
+    **Tradeoffs:**
+    - ✅ More precise results
+    - ✅ Better for short queries
+    - ❌ May split logical units
+    - ❌ More chunks = more storage
+  </Tab>
+  
+  <Tab title="Medium (512)">
+    **Use for:**
+    - General-purpose indexing (default)
+    - Mixed content types
+    - Documentation pages
+    - Blog posts
+    
+    **Tradeoffs:**
+    - ✅ Balanced performance
+    - ✅ Good context preservation
+    - ✅ Reasonable storage
+    - ✅ Works for most use cases
+  </Tab>
+  
+  <Tab title="Large (1024)">
+    **Use for:**
+    - Long-form content
+    - Technical papers
+    - Books and articles
+    - Content with long context
+    
+    **Tradeoffs:**
+    - ✅ Better context preservation
+    - ✅ Fewer chunks = less storage
+    - ❌ Less precise results
+    - ❌ May exceed context limits
+  </Tab>
+</Tabs>
+
+### Chunk Overlap
+
+The `--overlap` parameter controls how many tokens overlap between consecutive chunks.
+
+```bash
+# Default: 50 tokens
+know index
+
+# No overlap
+know index --overlap 0
+
+# More overlap for better context
+know index --overlap 100
+
+# Combine with chunk size
+know index --chunk-size 512 --overlap 75
+```
+
+<Accordion title="Why Use Chunk Overlap?">
+Overlap ensures that content at chunk boundaries isn't lost or split awkwardly:
+
+**Without overlap (--overlap 0):**
+```
+Chunk 1: "...the function returns a value."
+Chunk 2: "The value is then processed by..."
+```
+Searching for "return value processed" might miss this!
+
+**With overlap (--overlap 50):**
+```
+Chunk 1: "...the function returns a value."
+Chunk 2: "...returns a value. The value is then processed by..."
+```
+Now both chunks contain the complete context.
+
+**Recommended overlap:**
+- 10-20% of chunk size
+- Default 50 tokens works well with 512 chunk size (~10%)
+- Increase for narrative content
+- Decrease for independent items (logs, code)
+</Accordion>
+
+### How Chunking Works
+
+know uses LlamaIndex's `SentenceSplitter` for intelligent chunking:
+
+```python
+# From src/db.py:183
+splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+nodes = splitter.get_nodes_from_documents(filtered)
+```
+
+The splitter:
+1. Respects sentence boundaries when possible
+2. Avoids breaking words or sentences mid-way
+3. Maintains metadata (file path, chunk index)
+4. Creates overlapping regions for context
+
+Implementation reference: `src/db.py:79-313`
+
+## Caching and Performance
+
+### File Cache
+
+know maintains a cache in `~/.cache/know/` to track indexed files:
+
+```bash
+# Cache stores: modification time, file size, chunk settings
+# Files are skipped if unchanged
+```
+
+<Note>
+The cache is invalidated when:
+- File modification time changes
+- File size changes  
+- Chunk size changes
+- Chunk overlap changes
+
+This ensures re-indexing only when necessary.
+</Note>
+
+```python
+# From src/db.py:142-173
+cache = load_file_cache(chunk_size, chunk_overlap)
+for doc in documents:
+    source_path = doc.metadata["file_path"]
+    stat = Path(source_path).stat()
+    cache_entry = cache.get(source_path)
+    if (
+        cache_entry
+        and cache_entry.get("indexed")
+        and cache_entry.get("mtime") == stat.st_mtime
+        and cache_entry.get("size") == stat.st_size
+    ):
+        skipped_cache += 1
+        continue
+```
+
+Implementation reference: `src/db.py:142-173`
+
+### Deduplication
+
+know automatically deduplicates chunks using MD5 hashing:
+
+```python
+# From src/db.py:201-203
+chunk_id = hashlib.md5(
+    f"{source_path}:{chunk_index}:{node.text}".encode()
+).hexdigest()
+```
+
+This prevents:
+- Duplicate content from being indexed multiple times
+- Wasted storage and compute
+- Redundant search results
+
+Implementation reference: `src/db.py:198-255`
+
+### Batch Processing
+
+Indexing uses batched operations for performance:
+
+```python
+# From src/db.py:190-301
+batch_size = 100
+
+# Batch upsert for embeddings
+for i in range(0, len(pending_ids), batch_size):
+    batch_ids = pending_ids[i : i + batch_size]
+    batch_docs = pending_docs[i : i + batch_size]
+    batch_metas = pending_metas[i : i + batch_size]
+    
+    dense_collection.upsert(
+        ids=batch_ids,
+        documents=batch_docs,
+        metadatas=batch_metas,
+    )
+```
+
+Batching reduces:
+- API call overhead
+- Memory usage
+- Indexing time
+
+Implementation reference: `src/db.py:190-301`
+
+## Directory Management
+
+know tracks watched directories in `~/.know_dirs`:
+
+```bash
+# Add directories to watch
+know add ~/Documents
+know add ~/Projects/my-app
+
+# List watched directories
+know dirs
+
+# Remove a directory
+know remove ~/Documents
+```
+
+When you run `know index`, all watched directories are indexed together.
+
+### Recursive Scanning
+
+By default, indexing is recursive. You can disable this:
+
+```bash
+# Index only top-level files
+know index --no-recursive
+
+# Recursive is the default
+know index --recursive
+```
+
+## Index Storage
+
+know stores indexes in `./know_index/`:
+
+```
+know_index/
+├── chroma.sqlite3          # ChromaDB database
+├── [uuid]/                 # Collection data
+└── bm25/                   # BM25 index cache
+    ├── indices.npz         # BM25 index
+    ├── ids.json           # Document IDs
+    └── meta.json          # Metadata
+```
+
+### Storage Requirements
+
+Approximate storage per 1000 documents (512 token chunks):
+
+- **Dense vectors**: ~5-10 MB (depends on embedding model)
+- **BM25 index**: ~2-5 MB (depends on vocabulary size)
+- **Metadata**: ~1 MB
+
+Total: ~8-16 MB per 1000 documents
+
+## Maintenance Operations
+
+### Pruning Orphaned Chunks
+
+Remove chunks from deleted files:
+
+```bash
+# Show what would be pruned
+know prune --dry
+
+# Actually prune
+know prune
+
+# Show details
+know prune --log
+```
+
+```python
+# From src/db.py:528-582
+def prune(dry_run: bool = False, log: bool = False) -> tuple[int, int]:
+    all_data = dense_collection.get(include=["metadatas"])
+    
+    orphan_ids: list[str] = []
+    checked_paths: dict[str, bool] = {}  # cache path existence checks
+    
+    for chunk_id, meta in zip(all_data["ids"], all_data["metadatas"]):
+        path = meta.get("path", "")
+        if not path:
+            orphan_ids.append(chunk_id)
+            continue
+        
+        if path not in checked_paths:
+            checked_paths[path] = Path(path).exists()
+        
+        if not checked_paths[path]:
+            orphan_ids.append(chunk_id)
+```
+
+Implementation reference: `src/db.py:528-582`
+
+### Resetting the Index
+
+Clear everything and start fresh:
+
+```bash
+# WARNING: This deletes all indexed data
+know reset
+
+# Re-index everything
+know index --force
+```
+
+Implementation reference: `src/db.py:519-525`
+
+## Advanced Indexing Options
+
+### Dry Run
+
+Preview what would be indexed without making changes:
+
+```bash
+# See what would be indexed
+know index --dry
+
+# With detailed logs
+know index --dry --log
+
+# With filters
+know index --dry --glob "*.md" --since 7d
+```
+
+### Detailed Logging
+
+Get verbose output during indexing:
+
+```bash
+# Show progress and details
+know index --log
+
+# Output includes:
+# - Scanning progress
+# - Document counts
+# - Chunk counts
+# - Skipped files
+# - Processing time
+```
+
+### Force Reindex
+
+Bypass cache and reindex everything:
+
+```bash
+# Clear index and reindex all directories
+know index --force
+
+# Be careful: this deletes existing data!
+```
+
+### Skip Reports
+
+Generate detailed reports of skipped chunks:
+
+```bash
+# Write skip report to file
+know index --report skip_report.json
+```
+
+Report includes:
+- Files skipped (unchanged)
+- Chunks skipped (already indexed)
+- Chunks skipped (duplicate content)
+- Collision details
+
+Implementation reference: `src/db.py:57-73`, `src/db.py:146-267`
+
+## Extension Filtering
+
+Control which file types to index:
+
+```bash
+# Default extensions (see SUPPORTED_EXTENSIONS)
+know index
+
+# Index only specific extensions
+know index --ext py --ext js
+know index --ext .md --ext .txt  # Leading dot optional
+know index --ext "py,js,ts"      # Comma-separated
+
+# Combine with other filters
+know index --ext py --glob "src/**" --since 7d
+```
+
+<Note>
+Default supported extensions in `src/db.py:29-54`:
+
+**Documents:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.html`
+
+**Code:** `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.sh`, `.lua`, `.swift`
+</Note>
+
+## Optimization Guidelines
+
+<CardGroup cols={2}>
+  <Card title="Small Documents" icon="file">
+    ```bash
+    know index \
+      --chunk-size 256 \
+      --overlap 25
+    ```
+    Notes, snippets, short docs
+  </Card>
+  
+  <Card title="Long Documents" icon="book">
+    ```bash
+    know index \
+      --chunk-size 1024 \
+      --overlap 100
+    ```
+    Papers, books, articles
+  </Card>
+  
+  <Card title="Code Files" icon="code">
+    ```bash
+    know index \
+      --chunk-size 512 \
+      --overlap 50 \
+      --ext py,js,ts
+    ```
+    Source code repositories
+  </Card>
+  
+  <Card title="Documentation" icon="file-lines">
+    ```bash
+    know index \
+      --chunk-size 512 \
+      --overlap 75 \
+      --glob "**/*.md"
+    ```
+    Markdown documentation
+  </Card>
+</CardGroup>
+
+## Configuration Recommendations
+
+### General Purpose (Default)
+```bash
+know index --chunk-size 512 --overlap 50
+```
+Good for mixed content types.
+
+### Technical Documentation
+```bash
+know index --chunk-size 512 --overlap 75 --glob "**/*.md"
+```
+Higher overlap preserves code examples and explanations.
+
+### Code Search
+```bash
+know index --chunk-size 400 --overlap 40 --ext py,js,ts,go
+```
+Slightly smaller chunks for function-level granularity.
+
+### Notes and Snippets
+```bash
+know index --chunk-size 256 --overlap 25
+```
+Smaller chunks for precise matching.
+
+### Academic Papers
+```bash
+know index --chunk-size 1024 --overlap 150
+```
+Larger chunks preserve complex arguments.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Search Modes" icon="magnifying-glass" href="/guides/search-modes">
+    Learn about dense, BM25, and hybrid search
+  </Card>
+  <Card title="Output Formats" icon="display" href="/guides/output-formats">
+    Explore different output formats
+  </Card>
+</CardGroup>

@@ -1,0 +1,259 @@
+---
+title: 'know search'
+description: 'Search indexed documents semantically'
+---
+
+## Overview
+
+The `search` command performs semantic search across all indexed documents. It supports multiple search modes including dense vector search, BM25 lexical search, and hybrid approaches.
+
+<Note>
+You can search directly without the `search` keyword: `know "your query"` is equivalent to `know search "your query"`
+</Note>
+
+## Syntax
+
+```bash
+know search <query> [OPTIONS]
+know <query> [OPTIONS]  # Direct query
+```
+
+## Parameters
+
+<ParamField path="query" type="string" required>
+  The search query. Natural language questions and semantic queries work best.
+</ParamField>
+
+## Options
+
+<ParamField path="--limit" type="integer" default="5">
+  Number of results to return.
+  
+  **Alias:** `-n`
+</ParamField>
+
+<ParamField path="--glob" type="list[string]">
+  Include only files matching glob patterns. Can be specified multiple times or as comma-separated values.
+  
+  **Alias:** `-g`
+  
+  **Example:** `--glob "**/*.md" --glob "notes/**"`
+</ParamField>
+
+<ParamField path="--since" type="string">
+  Only include files modified since the specified time. Accepts relative time (e.g., `7d`, `12h`, `30m`) or absolute dates (e.g., `2024-01-15`).
+  
+  **Examples:**
+  - `7d` - Last 7 days
+  - `12h` - Last 12 hours
+  - `30m` - Last 30 minutes
+  - `2w` - Last 2 weeks
+  - `2024-01-15` - Since January 15, 2024
+</ParamField>
+
+<ParamField path="--bm25" type="boolean" default="false">
+  Use BM25 lexical search instead of semantic vector search. Better for exact keyword matches.
+</ParamField>
+
+<ParamField path="--hybrid" type="boolean" default="false">
+  Use hybrid search combining BM25 and vector search. Balances semantic understanding with keyword matching.
+</ParamField>
+
+<ParamField path="--benchmark" type="boolean" default="false">
+  Show both dense and BM25 results side-by-side for comparison.
+</ParamField>
+
+<ParamField path="--plain" type="boolean" default="false">
+  Render results as plain text instead of rich formatted output.
+</ParamField>
+
+<ParamField path="--json" type="boolean" default="false">
+  Render results as JSON to stdout.
+</ParamField>
+
+<ParamField path="--json-out" type="Path">
+  Write JSON results to the specified file.
+</ParamField>
+
+## Search Modes
+
+### Dense Vector Search (default)
+
+Uses semantic embeddings to find conceptually similar content, even if exact keywords don't match.
+
+```bash
+know "how to configure authentication"
+```
+
+### BM25 Lexical Search
+
+Uses traditional keyword-based ranking (BM25 algorithm). Better for finding exact terms.
+
+```bash
+know "API_KEY" --bm25
+```
+
+### Hybrid Search
+
+Combines both approaches for balanced results.
+
+```bash
+know "database connection" --hybrid
+```
+
+## Examples
+
+### Basic search
+
+```bash
+know "python async functions"
+```
+
+```
+╭─────────────────────────────────────────────────────╮
+│ Results for: python async functions                │
+├─────────────────────────────────────────────────────┤
+│ 1. /home/user/notes/async-guide.md:45              │
+│    Score: 0.87                                      │
+│    Async functions in Python use the async/await...│
+│                                                     │
+│ 2. /home/user/docs/python-concurrency.txt:123     │
+│    Score: 0.82                                      │
+│    To define an async function, use the async...   │
+╰─────────────────────────────────────────────────────╯
+```
+
+### Direct query (without 'search' keyword)
+
+```bash
+know "what is semantic search"
+```
+
+### Limit results
+
+```bash
+know "docker compose" --limit 10
+```
+
+### Filter by glob pattern
+
+```bash
+know "configuration" --glob "**/*.yaml" --glob "**/*.yml"
+```
+
+### Search recent files only
+
+```bash
+know "bug fix" --since 7d
+```
+
+### BM25 search for exact keywords
+
+```bash
+know "TODO: FIXME" --bm25
+```
+
+### Hybrid search
+
+```bash
+know "error handling" --hybrid --limit 10
+```
+
+### Compare search modes
+
+```bash
+know "authentication" --benchmark
+```
+
+```
+╭─────────────────────────────────────────────────────╮
+│ Dense Vector Results                                │
+├─────────────────────────────────────────────────────┤
+│ ... results ...                                     │
+╰─────────────────────────────────────────────────────╯
+
+╭─────────────────────────────────────────────────────╮
+│ BM25 Results                                        │
+├─────────────────────────────────────────────────────┤
+│ ... results ...                                     │
+╰─────────────────────────────────────────────────────╯
+```
+
+### Plain text output
+
+```bash
+know "API documentation" --plain
+```
+
+### JSON output to stdout
+
+```bash
+know "database schema" --json
+```
+
+```json
+{
+  "query": "database schema",
+  "results": [
+    {
+      "file": "/home/user/docs/schema.md",
+      "line": 23,
+      "score": 0.89,
+      "content": "..."
+    }
+  ]
+}
+```
+
+### Save results to file
+
+```bash
+know "migration guide" --json-out results.json
+```
+
+### Complex query with multiple filters
+
+```bash
+know "kubernetes deployment" \
+  --limit 15 \
+  --glob "**/*.md" \
+  --since 30d \
+  --hybrid
+```
+
+<Tip>
+For conceptual queries like "how to..." or "what is...", use the default dense vector search. For finding specific variable names, error codes, or exact phrases, use `--bm25`.
+</Tip>
+
+<Warning>
+You cannot use both `--bm25` and `--hybrid` together. Choose one search mode.
+</Warning>
+
+<Warning>
+You cannot use both `--plain` and `--json` together. Choose one output format.
+</Warning>
+
+## Time Format Reference
+
+The `--since` flag accepts flexible time formats:
+
+| Format | Description | Example |
+|--------|-------------|----------|
+| `<N>m` | Minutes ago | `30m` |
+| `<N>h` | Hours ago | `12h` |
+| `<N>d` | Days ago | `7d` |
+| `<N>w` | Weeks ago | `2w` |
+| `YYYY-MM-DD` | Absolute date | `2024-01-15` |
+| ISO 8601 | Full timestamp | `2024-01-15T10:30:00` |
+
+## Prerequisites
+
+Before searching, you must:
+
+1. Add directories: `know add <directory>`
+2. Index content: `know index`
+
+## See Also
+
+- `know index` - Index directories
+- `know add` - Add directories to watch list

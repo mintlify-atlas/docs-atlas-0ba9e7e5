@@ -1,0 +1,527 @@
+---
+title: Output Formats
+description: Choose between rich terminal UI, plain text, or JSON output
+---
+
+know supports three output formats for search results: rich terminal UI (default), plain text, and JSON. Choose the format that best fits your workflow.
+
+## Rich Format (Default)
+
+The rich format uses the [Rich library](https://rich.readthedocs.io/) to display beautifully formatted results in your terminal.
+
+```bash
+# Default: rich terminal UI
+know search "error handling"
+
+# Explicitly specify rich output (same as default)
+know search "database queries"
+```
+
+### Rich Output Features
+
+<Tabs>
+  <Tab title="Results Table">
+    The results are displayed in a table with:
+    - **Rank number** (1-5 by default)
+    - **Score** (distance/BM25 score/RRF)
+    - **Filename** (highlighted in green)
+    - **Path** (dimmed, with middle truncation for long paths)
+    - **Snippet** (preview of content)
+    
+    ```python
+    # From src/output.py:89-109
+    table = Table(
+        title=result.title,
+        box=box.SIMPLE_HEAVY,
+        show_lines=True,
+        pad_edge=False,
+    )
+    table.add_column("#", style="dim", width=3, justify="right")
+    table.add_column(result.score_label, style="cyan", width=9, justify="right")
+    table.add_column("File", style="green", overflow="fold")
+    table.add_column("Path", style="dim", overflow="fold", max_width=40)
+    table.add_column("Snippet", style="white", overflow="fold", max_width=60)
+    ```
+  </Tab>
+  
+  <Tab title="Top Match Panel">
+    Below the table, a panel shows the top result with:
+    - **Full file path** (with home directory as ~)
+    - **Chunk index** and **file size**
+    - **Extended preview** (up to 800 characters)
+    
+    ```python
+    # From src/output.py:112-126
+    top_doc = result.items[0].doc
+    top_meta = result.items[0].meta
+    meta_line = Text(
+        f"{_display_path(top_meta['path'], 100)}  ·  "
+        f"chunk {top_meta.get('chunk_index', 0)}  ·  "
+        f"{top_meta.get('size_bytes', 0)} bytes",
+        style="dim",
+    )
+    console.print(
+        Panel(
+            Group(meta_line, Text(_preview_text(top_doc, 800))),
+            title=f"[bold]Top match:[/] {top_meta['filename']}",
+            border_style="green",
+        )
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Styling">
+    Rich format includes:
+    - **Colors**: Green for filenames, cyan for scores, dim for metadata
+    - **Box drawing**: SIMPLE_HEAVY style with line separators
+    - **Text wrapping**: Automatic folding for long content
+    - **Path display**: Home directory shown as ~, long paths truncated in middle
+    
+    Example path display:
+    ```python
+    # From src/output.py:20-36
+    def _shorten_middle(text: str, max_len: int) -> str:
+        if len(text) <= max_len:
+            return text
+        keep = max_len - 3
+        head = keep // 2
+        tail = keep - head
+        return f"{text[:head]}...{text[-tail:]}"
+    
+    def _display_path(path: str, max_len: int = 60) -> str:
+        p = Path(path)
+        home = Path.home()
+        if p.is_absolute() and home in p.parents:
+            display = f"~/{p.relative_to(home)}"
+        else:
+            display = str(p)
+        return _shorten_middle(display, max_len)
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+**Visual Example:**
+
+```
+┏━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ # ┃ Distance┃ File         ┃ Path                ┃ Snippet            ┃
+┡━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ 1 │  0.4521 │ db.py        │ ~/workspace/src/... │ def search(query...│
+│ 2 │  0.5234 │ retrieval.py │ ~/workspace/src/... │ def rrf_fuse(res...│
+└───┴─────────┴──────────────┴─────────────────────┴────────────────────┘
+
+╭─ Top match: db.py ──────────────────────────────────────────────────────╮
+│ ~/workspace/src/db.py  ·  chunk 12  ·  18432 bytes                      │
+│                                                                          │
+│ def search(query: str, limit: int = 5, ...) -> ResultSet:               │
+│     Dense vector search uses ChromaDB embeddings to find semantically...│
+╰──────────────────────────────────────────────────────────────────────────╯
+```
+</Note>
+
+Implementation reference: `src/output.py:84-126`
+
+## Plain Text Format
+
+Plain text output is simple, unformatted text suitable for piping to other commands or logging.
+
+```bash
+# Use plain text output
+know search "api endpoints" --plain
+
+# Pipe to other commands
+know search "config" --plain | grep -i database
+
+# Save to file
+know search "migration" --plain > results.txt
+```
+
+### Plain Output Structure
+
+```python
+# From src/output.py:65-81
+def _render_plain(result: ResultSet) -> None:
+    if not result.items:
+        print("No results found")
+        return
+    print(result.title)
+    for i, item in enumerate(result.items, 1):
+        print(
+            f"{i}. {result.score_label}={item.distance:.4f} | "
+            f"{item.meta.get('filename')} | {item.meta.get('path')}"
+        )
+        print(f"    {_preview_text(item.doc, 200)}")
+    top = result.items[0]
+    print(
+        f"Top match: {top.meta.get('filename')} | {top.meta.get('path')} | "
+        f"chunk {top.meta.get('chunk_index', 0)} | {top.meta.get('size_bytes', 0)} bytes"
+    )
+    print(_preview_text(top.doc, 800))
+```
+
+**Example output:**
+
+```
+Results for: error handling
+1. Distance=0.4521 | db.py | /home/user/workspace/src/db.py
+    def search(query: str, limit: int = 5, include_globs: list[str] | None = None...
+2. Distance=0.5234 | retrieval.py | /home/user/workspace/src/retrieval.py
+    def rrf_fuse(result_lists: Iterable[list[SearchItem]], k: int = 60, limit: int...
+Top match: db.py | /home/user/workspace/src/db.py | chunk 12 | 18432 bytes
+def search(query: str, limit: int = 5, ...) -> ResultSet: Dense vector search...
+```
+
+Implementation reference: `src/output.py:65-81`
+
+## JSON Format
+
+JSON output provides structured data for programmatic access and integration with other tools.
+
+```bash
+# Output JSON to stdout
+know search "database" --json
+
+# Save JSON to file
+know search "authentication" --json-out results.json
+
+# Both stdout and file
+know search "config" --json --json-out backup.json
+
+# Parse with jq
+know search "api" --json | jq '.results[0].filename'
+```
+
+### JSON Schema
+
+```json
+{
+  "query": "error handling",
+  "mode": "dense",
+  "title": "Results for: error handling",
+  "results": [
+    {
+      "rank": 1,
+      "score": "0.4521",
+      "filename": "db.py",
+      "path": "/home/user/workspace/src/db.py",
+      "snippet": "def search(query: str, limit: int = 5...",
+      "chunk_index": 12,
+      "size_bytes": 18432
+    },
+    {
+      "rank": 2,
+      "score": "0.5234",
+      "filename": "retrieval.py",
+      "path": "/home/user/workspace/src/retrieval.py",
+      "snippet": "def rrf_fuse(result_lists...",
+      "chunk_index": 3,
+      "size_bytes": 8421
+    }
+  ]
+}
+```
+
+### JSON Generation
+
+```python
+# From src/output.py:39-56
+def _result_set_json(result: ResultSet) -> dict:
+    return {
+        "query": result.query,
+        "mode": result.mode,
+        "title": result.title,
+        "results": [
+            {
+                "rank": i,
+                "score": f"{item.distance:.4f}" if item.distance is not None else "n/a",
+                "filename": item.meta.get("filename"),
+                "path": item.meta.get("path"),
+                "snippet": _preview_text(item.doc, 200),
+                "chunk_index": item.meta.get("chunk_index", 0),
+                "size_bytes": item.meta.get("size_bytes", 0),
+            }
+            for i, item in enumerate(result.items, 1)
+        ],
+    }
+```
+
+Implementation reference: `src/output.py:39-63`, `src/output.py:129-160`
+
+### Benchmark JSON
+
+When using `--benchmark`, JSON includes both dense and BM25 results:
+
+```json
+{
+  "query": "error handling",
+  "dense": [
+    {"rank": 1, "score": "0.4521", "filename": "db.py", ...},
+    {"rank": 2, "score": "0.5234", "filename": "retrieval.py", ...}
+  ],
+  "bm25": [
+    {"rank": 1, "score": "8.2341", "filename": "error_handler.py", ...},
+    {"rank": 2, "score": "6.1283", "filename": "exceptions.py", ...}
+  ]
+}
+```
+
+```python
+# From src/output.py:134-149
+if isinstance(response, BenchmarkResult):
+    payload = {
+        "query": response.query,
+        "dense": _result_set_json(response.dense)["results"],
+        "bm25": _result_set_json(response.bm25)["results"],
+    }
+    _write_json_file(payload, json_out)
+    if output == "json":
+        print(json.dumps(payload, ensure_ascii=True))
+        return
+```
+
+Implementation reference: `src/output.py:134-149`
+
+## Format Comparison
+
+<Tabs>
+  <Tab title="Rich (Default)">
+    **Best for:**
+    - Interactive terminal use
+    - Quick visual scanning
+    - Exploring results
+    - Daily workflow
+    
+    **Features:**
+    - ✅ Beautiful formatting
+    - ✅ Color highlighting
+    - ✅ Easy to read
+    - ✅ Extended preview panel
+    
+    **Example:**
+    ```bash
+    know search "api endpoints"
+    ```
+  </Tab>
+  
+  <Tab title="Plain">
+    **Best for:**
+    - Piping to other commands
+    - Simple text processing
+    - Logging and archiving
+    - Scripts without color support
+    
+    **Features:**
+    - ✅ No formatting codes
+    - ✅ Easy to parse with grep/sed
+    - ✅ Works in any terminal
+    - ✅ Redirects cleanly
+    
+    **Example:**
+    ```bash
+    know search "config" --plain | grep database
+    ```
+  </Tab>
+  
+  <Tab title="JSON">
+    **Best for:**
+    - Programmatic access
+    - Integration with tools
+    - Structured data processing
+    - Building custom workflows
+    
+    **Features:**
+    - ✅ Structured data
+    - ✅ Easy to parse (jq, Python)
+    - ✅ Machine-readable
+    - ✅ Complete metadata
+    
+    **Example:**
+    ```bash
+    know search "api" --json | jq -r '.results[].path'
+    ```
+  </Tab>
+</Tabs>
+
+## Text Previews
+
+All formats include text previews with varying lengths:
+
+```python
+# From src/output.py:15-17
+def _preview_text(text: str, limit_chars: int) -> str:
+    cleaned = text.replace("\n", " ")
+    return cleaned[:limit_chars] + ("..." if len(cleaned) > limit_chars else "")
+```
+
+**Preview lengths:**
+- **Table snippets**: 200 characters
+- **Top match (rich/plain)**: 800 characters
+- **JSON snippets**: 200 characters
+
+Implementation reference: `src/output.py:15-17`
+
+## Integration Examples
+
+### Using jq with JSON Output
+
+```bash
+# Extract just filenames
+know search "auth" --json | jq -r '.results[].filename'
+
+# Get top result path
+know search "config" --json | jq -r '.results[0].path'
+
+# Filter by score threshold
+know search "error" --json | jq '.results[] | select(.score | tonumber < 0.5)'
+
+# Extract all paths with scores
+know search "db" --json | jq -r '.results[] | "\(.score)\t\(.path)"'
+
+# Count results
+know search "test" --json | jq '.results | length'
+```
+
+### Python Integration
+
+```python
+import json
+import subprocess
+
+# Run search and parse results
+result = subprocess.run(
+    ["know", "search", "error handling", "--json"],
+    capture_output=True,
+    text=True
+)
+
+data = json.loads(result.stdout)
+
+# Process results
+for item in data["results"]:
+    print(f"{item['filename']}: {item['score']}")
+    print(f"  Path: {item['path']}")
+    print(f"  Snippet: {item['snippet'][:100]}...")
+    print()
+
+# Filter by criteria
+top_matches = [r for r in data["results"] if float(r["score"]) < 0.5]
+print(f"Found {len(top_matches)} high-quality matches")
+```
+
+### Shell Scripting
+
+```bash
+#!/bin/bash
+
+# Search and open top result in editor
+top_file=$(know search "$1" --json | jq -r '.results[0].path')
+if [ -n "$top_file" ]; then
+    $EDITOR "$top_file"
+else
+    echo "No results found"
+fi
+```
+
+```bash
+#!/bin/bash
+
+# Find all unique files matching a query
+know search "$1" --json --limit 20 | \
+    jq -r '.results[].path' | \
+    sort -u
+```
+
+## Output File Writing
+
+Save JSON results to a file:
+
+```bash
+# Write JSON to file
+know search "api" --json-out results.json
+
+# View the file
+cat results.json | jq .
+
+# Combine with stdout (both render)
+know search "config" --json --json-out backup.json
+```
+
+```python
+# From src/output.py:59-62
+def _write_json_file(payload: dict, json_out: Path | None) -> None:
+    if json_out is None:
+        return
+    json_out.write_text(json.dumps(payload, ensure_ascii=True))
+```
+
+Implementation reference: `src/output.py:59-62`
+
+## Format Selection Logic
+
+```python
+# From src/know.py:131-136
+output = "rich"
+if plain:
+    output = "plain"
+if json_stdout:
+    output = "json"
+```
+
+The format is selected based on flags:
+1. Default: `rich`
+2. If `--plain`: `plain`
+3. If `--json`: `json`
+4. `--plain` and `--json` together is an error
+
+Implementation reference: `src/know.py:127-136`, `src/output.py:129-160`
+
+## Common Workflows
+
+<CardGroup cols={2}>
+  <Card title="Interactive Exploration">
+    ```bash
+    # Use rich format (default)
+    know search "machine learning"
+    ```
+    Best for browsing and discovery
+  </Card>
+  
+  <Card title="Text Processing">
+    ```bash
+    # Use plain format
+    know search "error" --plain | \
+      grep -i "critical"
+    ```
+    Best for grep/sed/awk pipelines
+  </Card>
+  
+  <Card title="Data Analysis">
+    ```bash
+    # Use JSON format
+    know search "api" --json | \
+      jq '.results | group_by(.filename)'
+    ```
+    Best for structured analysis
+  </Card>
+  
+  <Card title="Archival">
+    ```bash
+    # Save to files
+    know search "migration" \
+      --json-out "results-$(date +%F).json"
+    ```
+    Best for keeping records
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Search Modes" icon="magnifying-glass" href="/guides/search-modes">
+    Learn about dense, BM25, and hybrid search
+  </Card>
+  <Card title="Filtering" icon="filter" href="/guides/filtering">
+    Filter results by patterns and time
+  </Card>
+</CardGroup>

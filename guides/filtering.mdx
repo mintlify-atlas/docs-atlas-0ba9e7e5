@@ -1,0 +1,376 @@
+---
+title: Filtering
+description: Filter search results by file patterns and modification time
+---
+
+know provides powerful filtering capabilities to narrow down search results to specific files or time ranges. Filters work with all search modes.
+
+## Glob Pattern Filtering
+
+Use glob patterns to include only files matching specific patterns. This works during both indexing and search.
+
+### Basic Patterns
+
+```bash
+# Search only Markdown files
+know search "documentation" --glob "*.md"
+
+# Search Python files
+know search "async function" --glob "*.py"
+
+# Multiple patterns (comma-separated or multiple --glob flags)
+know search "config" --glob "*.json,*.yaml"
+know search "config" --glob "*.json" --glob "*.yaml"
+```
+
+### Recursive Patterns
+
+```bash
+# All Markdown files in any subdirectory
+know search "api docs" --glob "**/*.md"
+
+# Files in specific directory trees
+know search "tests" --glob "tests/**/*.py"
+know search "components" --glob "src/components/**/*.tsx"
+
+# Multiple directory patterns
+know search "schema" --glob "**/models/*.py,**/schemas/*.py"
+```
+
+### Pattern Matching Examples
+
+<Tabs>
+  <Tab title="Extension Matching">
+    ```bash
+    # Single extension
+    --glob "*.py"
+    
+    # Multiple extensions
+    --glob "*.{js,ts,jsx,tsx}"
+    
+    # All code files
+    --glob "*.py,*.js,*.go,*.rs"
+    ```
+  </Tab>
+  
+  <Tab title="Directory Matching">
+    ```bash
+    # Specific directory
+    --glob "docs/*"
+    
+    # Any depth
+    --glob "docs/**/*"
+    
+    # Specific subdirectory
+    --glob "src/components/**/*.tsx"
+    
+    # Multiple directories
+    --glob "docs/**,notes/**"
+    ```
+  </Tab>
+  
+  <Tab title="Name Matching">
+    ```bash
+    # Specific filename
+    --glob "README.md"
+    
+    # Name pattern
+    --glob "test_*.py"
+    
+    # Multiple name patterns
+    --glob "*_test.py,test_*.py"
+    ```
+  </Tab>
+</Tabs>
+
+### How Glob Filtering Works
+
+Glob patterns use Python's `fnmatch` module for matching. Patterns are matched against both the full path and the basename:
+
+```python
+# From src/db.py:326-335
+for item in items:
+    source_path = item.meta.get("path", "")
+    if include_globs:
+        path_str = Path(source_path).as_posix()
+        base_name = Path(source_path).name
+        if not any(
+            fnmatch.fnmatch(path_str, pattern)
+            or fnmatch.fnmatch(base_name, pattern)
+            for pattern in include_globs
+        ):
+            continue  # Skip non-matching files
+```
+
+Implementation reference: `src/db.py:106-122` (indexing), `src/db.py:326-335` (search)
+
+<Accordion title="Glob Syntax Reference">
+**Pattern Syntax:**
+
+- `*` - Matches any characters except `/`
+- `**` - Matches any characters including `/` (recursive)
+- `?` - Matches any single character
+- `[seq]` - Matches any character in seq
+- `[!seq]` - Matches any character not in seq
+- `{a,b}` - Matches either a or b (requires brace expansion)
+
+**Examples:**
+
+- `*.md` - Any Markdown file
+- `test_*.py` - Python test files
+- `src/**/*.js` - All JS files under src/
+- `README.*` - README with any extension
+- `[Dd]ocs/**` - Files in Docs/ or docs/
+</Accordion>
+
+## Time-Based Filtering
+
+Filter files by modification time using the `--since` flag. This works during both indexing and search.
+
+### Relative Time Formats
+
+```bash
+# Files modified in the last 7 days
+know search "recent changes" --since 7d
+
+# Last 12 hours
+know search "today's work" --since 12h
+
+# Last 30 minutes
+know search "latest updates" --since 30m
+
+# Last 2 weeks
+know search "sprint changes" --since 14d
+```
+
+### Absolute Time Formats
+
+```bash
+# Specific date (YYYY-MM-DD)
+know search "quarterly report" --since 2024-01-01
+
+# ISO 8601 datetime
+know search "migration logs" --since 2024-01-15T09:00:00
+```
+
+### Supported Time Units
+
+| Unit | Symbol | Example | Meaning |
+|------|--------|---------|----------|
+| Minutes | `m` | `30m` | Last 30 minutes |
+| Hours | `h` | `12h` | Last 12 hours |
+| Days | `d` | `7d` | Last 7 days |
+| Weeks | `w` | `2w` | Last 2 weeks |
+
+### How Time Filtering Works
+
+The `--since` flag is parsed into a Unix timestamp, then files are filtered by their modification time (mtime):
+
+```python
+# From src/know.py:38-53
+def _parse_since(since: Optional[str]) -> float | None:
+    if not since:
+        return None
+    value = since.strip()
+    if not value:
+        return None
+    unit_map = {"m": 60, "h": 3600, "d": 86400, "w": 604800}
+    unit = value[-1].lower()
+    if unit in unit_map and value[:-1].isdigit():
+        delta = int(value[:-1]) * unit_map[unit]
+        return (datetime.now() - timedelta(seconds=delta)).timestamp()
+    if "T" in value:
+        dt = datetime.fromisoformat(value)
+    else:
+        dt = datetime.strptime(value, "%Y-%m-%d")
+    return dt.timestamp()
+```
+
+```python
+# From src/db.py:336-340
+if since_timestamp is not None:
+    path = Path(source_path)
+    mtime = path.stat().st_mtime
+    if mtime < since_timestamp:
+        continue  # Skip older files
+```
+
+Implementation reference: `src/know.py:38-53` (parsing), `src/db.py:124-131` (indexing), `src/db.py:336-340` (search)
+
+## Combining Filters
+
+Glob and time filters can be combined for precise control:
+
+```bash
+# Recent Python files
+know search "bug fix" --glob "*.py" --since 7d
+
+# Documentation updated this week
+know search "api changes" --glob "docs/**/*.md" --since 7d
+
+# Test files modified today
+know search "test coverage" --glob "test_*.py" --since 1d
+
+# Multiple patterns with time filter
+know search "configuration" \
+  --glob "*.json,*.yaml,*.toml" \
+  --since 2024-01-01
+```
+
+## Filtering During Indexing
+
+Filters can also be applied during indexing to selectively add content:
+
+```bash
+# Index only Markdown files
+know index --glob "*.md"
+
+# Index files modified in the last week
+know index --since 7d
+
+# Index recent documentation
+know index --glob "docs/**/*.md" --since 30d
+
+# Index specific extensions
+know index --ext .py --ext .js --ext .ts
+```
+
+### Extension Filtering
+
+The `--ext` flag provides an alternative to glob patterns for filtering by file extension:
+
+```bash
+# Index Python files only
+know index --ext py
+know index --ext .py  # Leading dot is optional
+
+# Multiple extensions
+know index --ext py --ext js --ext ts
+know index --ext "py,js,ts"  # Comma-separated
+```
+
+<Note>
+By default, know indexes these extensions:
+
+**Documents:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.html`
+
+**Code:** `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.hpp`, `.rb`, `.sh`, `.lua`, `.swift`
+
+See `src/db.py:29-54` for the full list.
+</Note>
+
+## Performance Optimization
+
+### Candidate Expansion
+
+When filters are applied, know retrieves more candidates before filtering to ensure you get the requested number of results:
+
+```python
+# From src/db.py:442-444
+needs_filter = bool(include_globs) or since_timestamp is not None
+base_limit = max(limit, 10) if benchmark else limit
+candidate_limit = max(base_limit * 3, 20) if needs_filter else base_limit
+```
+
+This means requesting 5 results with filters will retrieve up to 15 candidates, then filter and return the top 5.
+
+### Caching Behavior
+
+During indexing, file metadata is cached to skip unchanged files:
+
+```python
+# From src/db.py:142-173
+cache = load_file_cache(chunk_size, chunk_overlap)
+cache_updates: dict[str, dict] = dict(cache)
+filtered: list = []
+skipped_cache = 0
+for doc in documents:
+    source_path = doc.metadata["file_path"]
+    stat = Path(source_path).stat()
+    cache_entry = cache.get(source_path)
+    if (
+        cache_entry
+        and cache_entry.get("indexed")
+        and cache_entry.get("mtime") == stat.st_mtime
+        and cache_entry.get("size") == stat.st_size
+    ):
+        skipped_cache += 1
+        continue  # Skip unchanged files
+```
+
+## Common Filtering Patterns
+
+<CardGroup cols={2}>
+  <Card title="Documentation Search">
+    ```bash
+    know search "api endpoints" \
+      --glob "**/*.md" \
+      --since 30d
+    ```
+    Search recent documentation files
+  </Card>
+  
+  <Card title="Code Search">
+    ```bash
+    know search "error handling" \
+      --glob "src/**/*.py" \
+      --bm25
+    ```
+    Search Python source code
+  </Card>
+  
+  <Card title="Recent Changes">
+    ```bash
+    know search "feature implementation" \
+      --since 7d \
+      --hybrid
+    ```
+    Search files from last week
+  </Card>
+  
+  <Card title="Test Files">
+    ```bash
+    know search "unit tests" \
+      --glob "test_*.py,*_test.py"
+    ```
+    Search test files only
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### No Results Found
+
+If filters are too restrictive, you may get no results:
+
+```bash
+# Check what files would match
+know index --dry --glob "your-pattern" --since 7d
+
+# Verify files exist
+find . -name "your-pattern" -mtime -7
+```
+
+### Pattern Not Matching
+
+Remember that patterns match against both full paths and basenames:
+
+```bash
+# These are equivalent for matching basenames
+--glob "*.md"
+--glob "**/*.md"
+
+# But this only matches root-level files
+--glob "*.md"  # via basename matching
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Search Modes" icon="magnifying-glass" href="/guides/search-modes">
+    Learn about dense, BM25, and hybrid search
+  </Card>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Configure chunk size and overlap settings
+  </Card>
+</CardGroup>

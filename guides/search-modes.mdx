@@ -1,0 +1,242 @@
+---
+title: Search Modes
+description: Understanding dense vector, BM25, and hybrid search modes in know
+---
+
+know supports three different search modes, each optimized for different types of queries. You can choose the mode that best matches your search needs.
+
+## Dense Vector Search (Default)
+
+Dense vector search uses ChromaDB embeddings to find semantically similar content. This mode excels at understanding meaning and context, even when exact keywords don't match.
+
+```bash
+# Default mode - uses dense vector search
+know search "machine learning concepts"
+
+# Explicitly specify dense mode
+know search "how to optimize database queries"
+```
+
+### How It Works
+
+Dense search converts your query and documents into high-dimensional vectors (embeddings) and finds the closest matches using vector similarity:
+
+1. **Indexing**: Documents are chunked and embedded using ChromaDB's default embedding model
+2. **Query**: Your search query is embedded into the same vector space
+3. **Retrieval**: ChromaDB finds the nearest neighbors using cosine distance
+4. **Results**: Items are ranked by distance (lower is better)
+
+<Note>
+Dense search works well for:
+- Conceptual queries ("error handling patterns")
+- Queries with synonyms ("automobile" matches "car")
+- Cross-lingual understanding
+- Questions vs. answers matching
+</Note>
+
+Implementation reference: `src/db.py:445-454`
+
+## BM25 Lexical Search
+
+BM25 is a traditional keyword-based ranking algorithm that excels at exact term matching and technical queries.
+
+```bash
+# Use BM25 for keyword-based search
+know search "async def process_request" --bm25
+
+# Good for technical terms and code
+know search "ChromaDB PersistentClient" --bm25
+```
+
+### How It Works
+
+BM25 uses statistical analysis of term frequency and document frequency:
+
+1. **Tokenization**: Documents are tokenized with stemming using PyStemmer
+2. **Indexing**: The bm25s library builds an inverted index with term statistics
+3. **Scoring**: Query terms are matched and scored using the BM25 algorithm
+4. **Caching**: The BM25 index is cached in `./know_index/bm25/` for performance
+
+```python
+# From src/bm25.py:29-36
+corpus_tokens = bm25s.tokenize(
+    documents,
+    stopwords="en",
+    stemmer=_STEMMER,  # English stemmer from PyStemmer
+    show_progress=False,
+)
+retriever = bm25s.BM25()
+retriever.index(corpus_tokens, show_progress=False)
+```
+
+<Note>
+BM25 works well for:
+- Exact keyword matches ("ValueError: invalid literal")
+- Technical terminology ("FastAPI dependency injection")
+- Code snippets and function names
+- Queries where word frequency matters
+</Note>
+
+Implementation reference: `src/db.py:375-431`, `src/bm25.py:25-42`
+
+## Hybrid Search
+
+Hybrid mode combines both dense vector and BM25 search using Reciprocal Rank Fusion (RRF), giving you the best of both worlds.
+
+```bash
+# Use hybrid search for balanced results
+know search "how does authentication work" --hybrid
+
+# Best for complex queries
+know search "implement rate limiting middleware" --hybrid
+```
+
+### How It Works
+
+Hybrid search runs both dense and BM25 searches in parallel, then fuses the results:
+
+1. **Parallel Search**: Retrieves `limit * 3` results from both dense and BM25
+2. **RRF Fusion**: Combines rankings using Reciprocal Rank Fusion with k=60
+3. **Re-ranking**: Final results are sorted by fused scores
+4. **Top Results**: Returns the top `limit` items
+
+```python
+# From src/retrieval.py:19-32
+def rrf_fuse(
+    result_lists: Iterable[list[SearchItem]], k: int = 60, limit: int = 5
+) -> list[FusedItem]:
+    scores: dict[str, dict] = {}
+    for items in result_lists:
+        for rank, item in enumerate(items, 1):
+            entry = scores.get(item.key)
+            if entry is None:
+                scores[item.key] = {"item": item, "score": 0.0}
+            scores[item.key]["score"] += 1.0 / (k + rank)
+    
+    fused = [FusedItem(v["item"], v["score"]) for v in scores.values()]
+    fused.sort(key=lambda x: x.score, reverse=True)
+    return fused[:limit]
+```
+
+<Accordion title="Understanding RRF with k=60">
+Reciprocal Rank Fusion (RRF) is a simple but effective way to combine rankings from multiple sources:
+
+- Each result's contribution is `1 / (k + rank)` where k=60
+- Higher k values reduce the importance of rank position
+- Items appearing in both result sets get boosted scores
+- The constant k=60 is a widely-used default that balances stability
+
+Example:
+- Item at rank 1: score = 1/(60+1) ≈ 0.0164
+- Item at rank 5: score = 1/(60+5) ≈ 0.0154
+- Item in both at rank 1 & 3: score ≈ 0.0164 + 0.0159 = 0.0323
+</Accordion>
+
+<Note>
+Hybrid works well for:
+- Complex natural language questions
+- Queries that benefit from both semantic and keyword matching
+- When you're not sure which mode to use
+- Production use cases requiring robust results
+</Note>
+
+Implementation reference: `src/db.py:485-508`, `src/retrieval.py:19-32`
+
+## Comparing Search Modes
+
+Use the `--benchmark` flag to compare dense and BM25 results side-by-side:
+
+```bash
+know search "error handling patterns" --benchmark
+```
+
+This displays both result sets, helping you understand which mode works better for your query patterns.
+
+<Tabs>
+  <Tab title="Dense">
+    **Best for:**
+    - Semantic understanding
+    - Conceptual queries
+    - Natural language questions
+    - Cross-lingual matching
+    
+    **Example queries:**
+    - "how to handle errors gracefully"
+    - "database optimization techniques"
+    - "user authentication best practices"
+  </Tab>
+  
+  <Tab title="BM25">
+    **Best for:**
+    - Exact keyword matching
+    - Technical terminology
+    - Code and function names
+    - Specific error messages
+    
+    **Example queries:**
+    - "FileNotFoundError"
+    - "async def main"
+    - "chromadb.PersistentClient"
+  </Tab>
+  
+  <Tab title="Hybrid">
+    **Best for:**
+    - General-purpose searching
+    - Complex queries
+    - When mode is uncertain
+    - Production deployments
+    
+    **Example queries:**
+    - "implement JWT authentication"
+    - "fix memory leak in async tasks"
+    - "optimize database query performance"
+  </Tab>
+</Tabs>
+
+## Performance Considerations
+
+### Caching
+
+BM25 indexes are cached to `./know_index/bm25/` with metadata tracking:
+
+```python
+# From src/bm25.py:64-78
+def load_cached_index(expected_count: int) -> tuple[bm25s.BM25, list[str]] | None:
+    if (
+        not BM25_CACHE_DIR.exists()
+        or not BM25_META_PATH.exists()
+        or not BM25_IDS_PATH.exists()
+    ):
+        return None
+    meta = json.loads(BM25_META_PATH.read_text())
+    if meta.get("count") != expected_count:
+        return None  # Rebuild if document count changed
+    retriever = bm25s.BM25.load(str(BM25_CACHE_DIR), load_corpus=False)
+    ids = json.loads(BM25_IDS_PATH.read_text())
+    return retriever, ids
+```
+
+### Candidate Retrieval
+
+Hybrid mode retrieves `limit * 3` candidates from each source before fusion to ensure high-quality results after filtering:
+
+```python
+# From src/db.py:486-490
+dense_items = _query_items(
+    dense_collection, query, max(limit * 3, 20), include_globs, since_timestamp
+)
+bm25_items = _bm25_query_items(
+    query, max(limit * 3, 20), include_globs, since_timestamp
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Filtering" icon="filter" href="/guides/filtering">
+    Learn about glob patterns and time-based filtering
+  </Card>
+  <Card title="Output Formats" icon="display" href="/guides/output-formats">
+    Explore rich, plain, and JSON output options
+  </Card>
+</CardGroup>

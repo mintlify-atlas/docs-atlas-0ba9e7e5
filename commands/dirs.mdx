@@ -1,0 +1,70 @@
+---
+title: 'know dirs'
+description: 'List all watched directories'
+---
+
+## Overview
+
+The `dirs` command displays all directories currently in the watch list. These are the directories that will be indexed when you run `know index`.
+
+## Syntax
+
+```bash
+know dirs
+```
+
+## Parameters
+
+This command takes no parameters or options.
+
+## Output
+
+Displays a formatted table showing:
+- Directory number (for reference)
+- Full absolute path to each watched directory
+
+## Examples
+
+### List watched directories
+
+```bash
+know dirs
+```
+
+```
+       Watched directories        
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  # │ Path                         
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1 │ /home/user/documents         
+  2 │ /home/user/projects/myapp    
+  3 │ /home/user/notes             
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### No directories added
+
+```bash
+know dirs
+```
+
+```
+No directories added
+```
+
+## Use Cases
+
+- Verify which directories are being indexed
+- Check if a directory has been successfully added
+- Review the watch list before running `know index`
+- Identify directories to remove with `know remove`
+
+## Storage Location
+
+Watched directories are stored in `~/.know_dirs`, with one directory path per line.
+
+## See Also
+
+- `know add` - Add directories to watch list
+- `know remove` - Remove directories from watch list
+- `know index` - Index all watched directories
