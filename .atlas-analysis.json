@@ -1,0 +1,70 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "know",
+  "projectDescription": "A semantic search CLI for local files that watches directories, chunks documents, and stores embeddings in a local Chroma index.",
+  "theme": "palm",
+  "primaryColor": "#4F46E5",
+  "lightColor": "#818CF8",
+  "darkColor": "#3730A3",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Commands",
+        "pages": [
+          "commands/add",
+          "commands/remove",
+          "commands/index",
+          "commands/search",
+          "commands/dirs",
+          "commands/prune",
+          "commands/reset"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/search-modes",
+          "guides/filtering",
+          "guides/configuration",
+          "guides/output-formats"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/supported-files",
+          "reference/architecture",
+          "reference/faq"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Local semantic search with vector embeddings",
+    "BM25 lexical search and hybrid fusion",
+    "Watch multiple directories and auto-index",
+    "Support for 20+ file types including code and documents",
+    "Fast incremental indexing with smart caching",
+    "Flexible filtering by glob patterns and modification time",
+    "Multiple output formats (rich, plain, JSON)",
+    "Benchmark mode to compare search strategies"
+  ],
+  "publicApiSurface": [
+    "know add <dir>",
+    "know remove <dir>",
+    "know index [--log] [--ext] [--glob] [--since] [--recursive] [--chunk-size] [--overlap] [--force] [--dry] [--report]",
+    "know search <query> [--limit] [--glob] [--since] [--bm25] [--hybrid] [--benchmark] [--plain] [--json] [--json-out]",
+    "know <query> [--limit] [--glob] [--since] [--bm25] [--hybrid] [--benchmark] [--plain] [--json] [--json-out]",
+    "know dirs",
+    "know prune [--dry] [--log]",
+    "know reset"
+  ]
+}
